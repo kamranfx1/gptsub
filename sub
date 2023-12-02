@@ -1,0 +1,95 @@
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request))
+})
+
+const GITHUB_API_URL = 'https://api.github.com/gists';
+
+async function handleRequest(request) {
+  if (request.method === 'GET' && request.url.endsWith('/input')) {
+    return new Response(getInputPage(), {
+      headers: {
+        'Content-Type': 'text/html',
+      },
+    })
+  }
+
+  if (request.method === 'GET' && request.url.endsWith('/download')) {
+    const gistId = "YOUR_GIST_ID"; // Replace with your actual Gist ID
+    const textContent = await getGistContent(gistId);
+
+    return new Response(textContent, {
+      headers: {
+        'Content-Type': 'text/plain',
+        'Content-Disposition': 'attachment; filename="saved-text.txt"',
+      },
+    })
+  }
+
+  if (request.method === 'POST' && request.url.endsWith('/input')) {
+    const formData = await request.formData();
+    const textContent = formData.get('text-content');
+    const gistId = await createOrUpdateGist(textContent);
+
+    return new Response(`Text saved! Gist ID: ${gistId}`, {
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    })
+  }
+
+  // Default response for other routes
+  return new Response('Not Found', { status: 404 })
+}
+
+async function createOrUpdateGist(textContent) {
+  const response = await fetch(GITHUB_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_GITHUB_TOKEN', // Replace with your GitHub personal access token
+    },
+    body: JSON.stringify({
+      files: {
+        'saved-text.txt': {
+          content: textContent,
+        },
+      },
+      public: true,
+    }),
+  });
+
+  const data = await response.json();
+  return data.id;
+}
+
+async function getGistContent(gistId) {
+  const response = await fetch(`${GITHUB_API_URL}/${gistId}`);
+  const data = await response.json();
+  
+  const file = data.files['saved-text.txt'];
+  return file ? file.content : '';
+}
+
+function getInputPage() {
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Cloudflare Worker Text Input</title>
+    </head>
+    <body>
+      <h1>Cloudflare Worker Text Input</h1>
+      <form action="/input" method="post">
+        <label for="text-content">Enter your text:</label>
+        <textarea id="text-content" name="text-content" rows="5" cols="30"></textarea>
+        <br>
+        <button type="submit">Save Text</button>
+      </form>
+      <p><a href="/download">Download Text</a></p>
+    </body>
+    </html>
+  `;
+}
